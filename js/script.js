@@ -26,6 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    loadTodos();
     updateEmptyState();
     updateStats();
 
@@ -44,9 +45,32 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        const todoObject = {
+            id: Date.now(),
+            text: taskText,
+            date: taskDate,
+            completed: false
+        };
+
+        saveLocalTodos(todoObject);
+        loadTodos();
+
+        todoInput.value = '';
+        todoDate.value = '';
+
+        updateEmptyState();
+        updateStats();
+        filterOption();
+    }
+
+    function createTodoElement(todoObject) {
         const todoDiv = document.createElement('li');
         todoDiv.classList.add('todo-item');
-        todoDiv.setAttribute('data-date', taskDate);
+        if(todoObject.completed) {
+            todoDiv.classList.add('completed');
+        }
+        todoDiv.setAttribute('data-id', todoObject.id);
+        todoDiv.setAttribute('data-date', todoObject.date);
 
         const todoContent = document.createElement('div');
         todoContent.classList.add('todo-content');
@@ -60,12 +84,12 @@ document.addEventListener('DOMContentLoaded', () => {
         infoDiv.classList.add('todo-info');
 
         const newTodo = document.createElement('span');
-        newTodo.innerText = taskText;
+        newTodo.innerText = todoObject.text;
         newTodo.classList.add('todo-text');
         infoDiv.appendChild(newTodo);
 
         const dateDisplay = document.createElement('span');
-        dateDisplay.innerText = formatDate(taskDate);
+        dateDisplay.innerText = formatDate(todoObject.date);
         dateDisplay.classList.add('todo-date');
         infoDiv.appendChild(dateDisplay);
 
@@ -76,23 +100,20 @@ document.addEventListener('DOMContentLoaded', () => {
         trashButton.innerHTML = '<i class="fas fa-trash"></i>';
         trashButton.classList.add('delete-btn');
         todoDiv.appendChild(trashButton);
+
         todoList.appendChild(todoDiv);
-
-        todoInput.value = '';
-        todoDate.value = '';
-
-        updateEmptyState();
-        updateStats();
     }
 
     function deleteCheck(e) {
         const item = e.target;
-        const todo = item.closest('.todo-item');
+        const todo = item.closest('.todo-item'); 
 
         if (!todo) return;
 
         if (item.classList.contains('delete-btn') || item.closest('.delete-btn')) {
             todo.classList.add('fall');
+            const id = todo.getAttribute('data-id');
+            removeLocalTodos(id);
             todo.addEventListener('transitionend', function() {
                 todo.remove();
                 updateEmptyState();
@@ -101,7 +122,30 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (item.classList.contains('check-btn') || item.closest('.check-btn')) {
+            const dateAttr = todo.getAttribute('data-date');
+            const taskDate = new Date(dateAttr);
+            const today = new Date();
+            
+            taskDate.setHours(0,0,0,0);
+            today.setHours(0,0,0,0);
+
+            if (!todo.classList.contains('completed')) {
+                if (taskDate > today) {
+                    if (!confirm('This task is scheduled for the future. Are you sure you have finished it?')) {
+                        return;
+                    }
+                } else if (taskDate < today) {
+                    if (!confirm('This task is overdue. Are you sure you have finished it?')) {
+                        return;
+                    }
+                }
+            }
+
             todo.classList.toggle('completed');
+            const id = todo.getAttribute('data-id');
+            const isCompleted = todo.classList.contains('completed');
+            updateLocalStatus(id, isCompleted);
+            
             updateStats();
             filterOption();
         }
@@ -120,6 +164,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     updateStats();
                 });
             });
+            clearLocalTodos();
             setTimeout(updateStats, 500); 
         }
     }
@@ -179,16 +224,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const completedCount = completedItems.length;
         const pendingCount = totalCount - completedCount;
 
-        document.getElementById('total-tasks').innerText = totalCount;
-        document.getElementById('completed-tasks').innerText = completedCount;
-        document.getElementById('pending-tasks').innerText = pendingCount;
+        const totalEl = document.getElementById('total-tasks');
+        const completedEl = document.getElementById('completed-tasks');
+        const pendingEl = document.getElementById('pending-tasks');
+
+        if(totalEl) totalEl.innerText = totalCount;
+        if(completedEl) completedEl.innerText = completedCount;
+        if(pendingEl) pendingEl.innerText = pendingCount;
         
         updateProgress();
     }
 
     function updateProgress() {
         const todos = document.querySelectorAll('.todo-item');
-        const today = new Date().toISOString().slice(0, 10);
+        const today = new Date().toISOString().slice(0, 10); 
         
         let todayTotal = 0;
         let todayCompleted = 0;
@@ -233,5 +282,59 @@ document.addEventListener('DOMContentLoaded', () => {
     function formatDate(dateString) {
         const options = { weekday: 'short', month: 'short', day: 'numeric' };
         return new Date(dateString).toLocaleDateString('en-US', options);
+    }
+
+    function saveLocalTodos(todoObject) {
+         let todos = getLocalTodos();
+         todos.push(todoObject);
+         sortAndSave(todos);
+    }
+ 
+    function getLocalTodos() {
+        if (localStorage.getItem('todos_app_web_mkevina') === null) {
+            return [];
+        } else {
+            return JSON.parse(localStorage.getItem('todos_app_web_mkevina'));
+        }
+    }
+ 
+    function sortAndSave(todos) {
+        todos.sort((a, b) => new Date(a.date) - new Date(b.date));
+        localStorage.setItem('todos_app_web_mkevina', JSON.stringify(todos));
+    }
+ 
+    function loadTodos() {
+        let todos = getLocalTodos();
+        todos.sort((a, b) => new Date(a.date) - new Date(b.date));
+        
+        const todoList = document.getElementById('todo-list');
+        const items = document.querySelectorAll('.todo-item');
+        items.forEach(item => item.remove());
+ 
+        todos.forEach(function(todo) {
+            createTodoElement(todo);
+        });
+    }
+ 
+    function removeLocalTodos(id) {
+        let todos = getLocalTodos();
+        const todoIndex = todos.findIndex(todo => todo.id == id);
+        if(todoIndex > -1) {
+            todos.splice(todoIndex, 1);
+        }
+        localStorage.setItem('todos_app_web_mkevina', JSON.stringify(todos));
+    }
+ 
+    function updateLocalStatus(id, status) {
+        let todos = getLocalTodos();
+        const todoIndex = todos.findIndex(todo => todo.id == id);
+        if(todoIndex > -1) {
+            todos[todoIndex].completed = status;
+        }
+        localStorage.setItem('todos_app_web_mkevina', JSON.stringify(todos));
+    }
+ 
+    function clearLocalTodos() {
+        localStorage.removeItem('todos_app_web_mkevina');
     }
 });
