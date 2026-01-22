@@ -7,6 +7,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById('search-input');
     const deleteAllBtn = document.getElementById('delete-all-btn');
 
+    // Edit State Variables
+    let editMode = false;
+    let editId = null;
+
     todoButton.addEventListener('click', addTodo);
     todoList.addEventListener('click', deleteCheck);
     
@@ -45,14 +49,22 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const todoObject = {
-            id: Date.now(),
-            text: taskText,
-            date: taskDate,
-            completed: false
-        };
+        if (editMode && editId) {
+            // Updating existing task
+            updateLocalTodo(editId, taskText, taskDate);
+            resetEditMode();
+        } else {
+            // Adding new task
+            const todoObject = {
+                id: Date.now(),
+                text: taskText,
+                date: taskDate,
+                completed: false
+            };
+            saveLocalTodos(todoObject);
+        }
 
-        saveLocalTodos(todoObject);
+        // Reload to show changes (sorted)
         loadTodos();
 
         todoInput.value = '';
@@ -96,6 +108,13 @@ document.addEventListener('DOMContentLoaded', () => {
         todoContent.appendChild(infoDiv);
         todoDiv.appendChild(todoContent);
 
+        // Edit Button
+        const editButton = document.createElement('button');
+        editButton.innerHTML = '<i class="fas fa-pen"></i>';
+        editButton.classList.add('edit-btn');
+        todoDiv.appendChild(editButton);
+
+        // Delete Button
         const trashButton = document.createElement('button');
         trashButton.innerHTML = '<i class="fas fa-trash"></i>';
         trashButton.classList.add('delete-btn');
@@ -110,22 +129,57 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!todo) return;
 
+        // DELETE
         if (item.classList.contains('delete-btn') || item.closest('.delete-btn')) {
             todo.classList.add('fall');
             const id = todo.getAttribute('data-id');
             removeLocalTodos(id);
             todo.addEventListener('transitionend', function() {
                 todo.remove();
+                
+                // If we were editing this item, cancel edit
+                if(editMode && editId == id) {
+                    resetEditMode();
+                }
+
                 updateEmptyState();
                 updateStats();
             });
         }
 
+        // EDIT
+        if (item.classList.contains('edit-btn') || item.closest('.edit-btn')) {
+            const id = todo.getAttribute('data-id');
+            const todos = getLocalTodos();
+            const taskToEdit = todos.find(t => t.id == id);
+            
+            if (taskToEdit) {
+                // Populate Inputs
+                todoInput.value = taskToEdit.text;
+                todoDate.value = taskToEdit.date;
+                
+                // Set Edit Mode
+                editMode = true;
+                editId = id;
+                
+                // Change Add Button to Update
+                todoButton.innerHTML = '<i class="fas fa-save"></i>';
+                todoButton.style.background = "#0ea5e9"; // Sky blue for update
+                
+                // Focus input
+                todoInput.focus();
+                
+                // Scroll to top
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }
+
+        // CHECK / COMPLETE
         if (item.classList.contains('check-btn') || item.closest('.check-btn')) {
             const dateAttr = todo.getAttribute('data-date');
+            
             const taskDate = new Date(dateAttr);
             const today = new Date();
-            
             taskDate.setHours(0,0,0,0);
             today.setHours(0,0,0,0);
 
@@ -151,6 +205,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function resetEditMode() {
+        editMode = false;
+        editId = null;
+        todoButton.innerHTML = '<i class="fas fa-plus"></i>';
+        todoButton.style.background = ""; // Revert to CSS default
+        todoInput.value = '';
+        todoDate.value = '';
+    }
+
     function deleteAll() {
         const todos = document.querySelectorAll('.todo-item');
         if(todos.length === 0) return;
@@ -165,6 +228,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             });
             clearLocalTodos();
+            resetEditMode();
             setTimeout(updateStats, 500); 
         }
     }
@@ -290,6 +354,16 @@ document.addEventListener('DOMContentLoaded', () => {
          sortAndSave(todos);
     }
  
+    function updateLocalTodo(id, newText, newDate) {
+        let todos = getLocalTodos();
+        const index = todos.findIndex(t => t.id == id);
+        if (index > -1) {
+            todos[index].text = newText;
+            todos[index].date = newDate;
+            sortAndSave(todos);
+        }
+    }
+
     function getLocalTodos() {
         if (localStorage.getItem('todos_app_web_mkevina') === null) {
             return [];
